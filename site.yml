@@ -7,38 +7,6 @@
         update_cache: true
         upgrade: dist
 
-    - name: Locate kernel cmdline.txt (Bookworm uses /boot/firmware, older /boot)
-      ansible.builtin.stat:
-        path: "{{ item }}"
-      loop:
-        - /boot/firmware/cmdline.txt
-        - /boot/cmdline.txt
-      register: cmdline_stat
-
-    - name: Set cmdline file path fact
-      ansible.builtin.set_fact:
-        cmdline_file: "{{ (existing_paths + ['/boot/firmware/cmdline.txt']) | first }}"
-      vars:
-        existing_paths: "{{ cmdline_stat.results | selectattr('stat.exists') | map(attribute='item') | list }}"
-
-    - name: Read kernel cmdline.txt
-      ansible.builtin.slurp:
-        src: "{{ cmdline_file }}"
-      register: cmdline_raw
-
-    - name: Enable memory cgroup for container memory stats (RPi kernel disables it via DTB)
-      ansible.builtin.copy:
-        dest: "{{ cmdline_file }}"
-        mode: '0644'
-        content: "{{ new_cmdline }}"
-      vars:
-        existing_tokens: "{{ (cmdline_raw.content | b64decode | trim).split() | reject('match', '^(cgroup_enable|cgroup_memory|swapaccount)=.*$') | list }}"
-        new_cmdline: "{{ (existing_tokens + ['cgroup_enable=memory']) | join(' ') }}\n"
-      notify: Reboot to enable memory cgroup
-
-    - name: Apply cmdline change now (reboot before Docker/Dozzle come up)
-      ansible.builtin.meta: flush_handlers
-
     - name: Install security packages
       ansible.builtin.apt:
         name:
@@ -172,23 +140,6 @@
           DOZZLE_ENABLE_MCP: "false"
           DOZZLE_NO_ANALYTICS: "true"
 
-    - name: Read enabled cgroup controllers
-      ansible.builtin.command: cat /sys/fs/cgroup/cgroup.controllers
-      changed_when: false
-      register: cgroup_controllers
-
-    - name: Read docker info
-      ansible.builtin.command: docker info
-      changed_when: false
-      register: docker_info_out
-
-    - name: Verify memory cgroup is active (Dozzle/docker stats can read memory)
-      ansible.builtin.assert:
-        that:
-          - "'memory' in cgroup_controllers.stdout.split()"
-          - "'No memory limit support' not in docker_info_out.stdout"
-        fail_msg: "memory cgroup not active; the Pi likely needs a reboot after the cmdline change"
-
     - name: Add Tailscale apt keyring
       ansible.builtin.apt_key:
         url: "https://pkgs.tailscale.com/stable/debian/{{ ansible_distribution_release }}.noarmor.gpg"
@@ -229,6 +180,55 @@
           - rsync
           - tealdeer
         state: present
+
+    - name: Locate kernel cmdline.txt (Bookworm uses /boot/firmware, older /boot)
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - /boot/firmware/cmdline.txt
+        - /boot/cmdline.txt
+      register: cmdline_stat
+
+    - name: Set cmdline file path fact
+      ansible.builtin.set_fact:
+        cmdline_file: "{{ (existing_paths + ['/boot/firmware/cmdline.txt']) | first }}"
+      vars:
+        existing_paths: "{{ cmdline_stat.results | selectattr('stat.exists') | map(attribute='item') | list }}"
+
+    - name: Read kernel cmdline.txt
+      ansible.builtin.slurp:
+        src: "{{ cmdline_file }}"
+      register: cmdline_raw
+
+    - name: Enable memory cgroup for container memory stats (RPi kernel disables it via DTB)
+      ansible.builtin.copy:
+        dest: "{{ cmdline_file }}"
+        mode: '0644'
+        content: "{{ new_cmdline }}"
+      vars:
+        existing_tokens: "{{ (cmdline_raw.content | b64decode | trim).split() | reject('match', '^(cgroup_enable|cgroup_memory|swapaccount)=.*$') | list }}"
+        new_cmdline: "{{ (existing_tokens + ['cgroup_enable=memory']) | join(' ') }}\n"
+      notify: Reboot to enable memory cgroup
+
+    - name: Reboot to apply memory cgroup (final step; host already configured)
+      ansible.builtin.meta: flush_handlers
+
+    - name: Read enabled cgroup controllers
+      ansible.builtin.command: cat /sys/fs/cgroup/cgroup.controllers
+      changed_when: false
+      register: cgroup_controllers
+
+    - name: Read docker info
+      ansible.builtin.command: docker info
+      changed_when: false
+      register: docker_info_out
+
+    - name: Verify memory cgroup is active (Dozzle/docker stats can read memory)
+      ansible.builtin.assert:
+        that:
+          - "'memory' in cgroup_controllers.stdout.split()"
+          - "'No memory limit support' not in docker_info_out.stdout"
+        fail_msg: "memory cgroup not active; the Pi likely needs a reboot after the cmdline change"
 
   handlers:
     - name: Restart Docker
