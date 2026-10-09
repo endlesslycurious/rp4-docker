@@ -45,6 +45,14 @@ This repo will set up and configure a [Raspberry Pi 4](https://www.raspberrypi.c
        `ansible-playbook -i inventory.ini site.yml -e "zot_mirror=$(cat .zot_mirror)"`.
  2. Test Dozzle by opening `RP4.local` (port 80) in a web browser to view container logs.
 
+ ## Memory stats in Dozzle (Raspberry Pi only)
+ By default the Raspberry Pi kernel boots with its memory cgroup **disabled** (the device tree passes `cgroup_disable=memory` to save overhead on low-RAM boards). Without it, the Docker API reports no per-container memory, so Dozzle's memory graph stays empty (the same reason `docker stats` shows `0`).
+ The playbook fixes this automatically: it appends `cgroup_enable=memory` to the single-line `cmdline.txt` and **reboots the Pi once** to apply it (the flag must come *after* the DTB args, which appending guarantees). After that first reboot the memory controller is live and Dozzle shows memory for every container.
+ Notes:
+ - This is just accounting here — it only starts *enforcing* limits if you later set `mem_limit` on a container. No container limits are set, so there is no new kill/OOM behaviour.
+ - The Dozzle FAQ's advice (`/boot/cmdline.txt` plus `cgroup_enable=cpuset cgroup_memory=1`) is dated; on current Bookworm/Trixie the file is `/boot/firmware/cmdline.txt` and `cgroup_enable=memory` alone is enough. Revert by removing the token from `cmdline.txt` and rebooting.
+ - Verify after a run: `cat /sys/fs/cgroup/cgroup.controllers` lists `memory`, and `docker info` no longer prints `WARNING: No memory limit support`.
+
  ## Tailscale (optional remote access)
  1. Install the client on your Mac: `brew install tailscale` and sign in to your tailnet.
  2. Create an auth key in the Tailscale admin console and save it to `.tailscale_rp4.key` (git-ignored).
