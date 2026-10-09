@@ -1,6 +1,6 @@
 # Docker + Dozzle on Raspberry Pi 4
 
-This repo will set up and configure a [Raspberry Pi 4](https://www.raspberrypi.com/products/raspberry-pi-4-model-b/) as a Docker host, with [Docker Compose](https://docs.docker.com/compose/) for deployments and [Dozzle](https://dozzle.dev) as a live container log dashboard.
+This repo will set up and configure a [Raspberry Pi 4](https://www.raspberrypi.com/products/raspberry-pi-4-model-b/) (4 GB) as a Docker host, with [Docker Compose](https://docs.docker.com/compose/) for deployments and [Dozzle](https://dozzle.dev) as a live container log dashboard.
 - Basic security: password login disabled, [UFW](https://help.ubuntu.com/community/UFW) firewall and [Fail2Ban](https://github.com/fail2ban/fail2ban) login guard.
 - Updates: security + stable updates applied automatically.
 - Instructions assume your using a Mac with [HomeBrew](https://brew.sh) installed.
