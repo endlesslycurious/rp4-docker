@@ -39,14 +39,22 @@ This repo will set up and configure a [Raspberry Pi 4](https://www.raspberrypi.c
 
  ## Running the Playbook.
  1. Run the command `ansible-playbook -i inventory.ini site.yml` and wait for it to complete.
-    - To also join the Pi to your Tailscale tailnet, pass an auth key (kept out of the repo):
-      `ansible-playbook -i inventory.ini site.yml -e "tailscale_auth_key=$(cat .tailscale_rp4.key)"`.
+     - To also join the Pi to your Tailscale tailnet, pass an auth key (kept out of the repo):
+       `ansible-playbook -i inventory.ini site.yml -e "tailscale_auth_key=$(cat .tailscale_rp4.key)"`.
+     - To also route Docker Hub pulls through a Zot pull-through cache, pass its address (kept out of the repo):
+       `ansible-playbook -i inventory.ini site.yml -e "zot_mirror=$(cat .zot_mirror)"`.
  2. Test Dozzle by opening `RP4.local` (port 80) in a web browser to view container logs.
 
  ## Tailscale (optional remote access)
  1. Install the client on your Mac: `brew install tailscale` and sign in to your tailnet.
  2. Create an auth key in the Tailscale admin console and save it to `.tailscale_rp4.key` (git-ignored).
  3. Run the playbook with the key (see above), or on the Pi run `sudo tailscale up`.
- 4. Reach services over the tailnet using the Pi's Tailscale name/IP, e.g. `http://rp4`.
+  4. Reach services over the tailnet using the Pi's Tailscale name/IP, e.g. `http://rp4`.
 
-  You should now be good to go!
+  ## Zot pull-through cache (optional registry mirror)
+  1. Run a [Zot](https://zot.dev) instance and note its address as `host:port` (no scheme), e.g. `zot.rp4.ts.net:5000`.
+  2. Save that value to `.zot_mirror` (git-ignored).
+  3. Run the playbook with it (see above). This adds `registry-mirrors: ["http://<host:port>"]` to `/etc/docker/daemon.json`.
+  4. Because the cache serves plain HTTP, the same `daemon_extra` also registers it under `insecure-registries`; without that, Docker fails TLS on the mirror and silently falls back to Docker Hub. If you put TLS on Zot, use an `https://` value here instead and drop the `insecure-registries` entry.
+
+   You should now be good to go!

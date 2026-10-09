@@ -109,9 +109,12 @@
       ansible.builtin.copy:
         dest: /etc/docker/daemon.json
         mode: '0644'
-        content: "{{ existing_config | combine({'live-restore': true}) | to_nice_json }}\n"
+        content: "{{ existing_config | combine(daemon_extra) | to_nice_json }}\n"
       vars:
         existing_config: "{{ (docker_daemon_raw.content | b64decode | from_json) if docker_daemon_file.stat.exists else {} }}"
+        daemon_extra: "{{ {'live-restore': true, 'registry-mirrors': ['http://' ~ zot_mirror],
+                          'insecure-registries': [zot_mirror]}
+                         if zot_mirror is defined else {'live-restore': true} }}"
       notify: Restart Docker
 
     - name: Remove Portainer (replaced by Dozzle)
@@ -174,6 +177,7 @@
           - btop
           - fzf
           - ripgrep
+          - rsync
           - tealdeer
         state: present
 
