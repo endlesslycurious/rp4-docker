@@ -33,14 +33,11 @@
         - { regexp: 'APT::Periodic::AutocleanInterval', line: 'APT::Periodic::AutocleanInterval "7";' }
         - { regexp: 'APT::Periodic::Unattended-Upgrade', line: 'APT::Periodic::Unattended-Upgrade "1";' }
 
-    - name: Configure unattended-upgrades to apply only security updates
+    - name: Remove Ansible security-only override (rely on distro default security + stable)
       ansible.builtin.blockinfile:
         path: /etc/apt/apt.conf.d/50unattended-upgrades
         marker: "// {mark} ANSIBLE MANAGED SECURITY BLOCK"
-        block: |
-          Unattended-Upgrade::Origins-Pattern {
-            "origin=Debian,codename=${distro_codename},label=Debian-Security";
-          };
+        state: absent
 
     - name: Enable and configure UFW
       community.general.ufw:
@@ -50,6 +47,11 @@
     - name: Enable UFW
       community.general.ufw:
         state: enabled
+
+    - name: Allow tailnet range through UFW
+      community.general.ufw:
+        rule: allow
+        src: 100.64.0.0/10
 
     - name: Disable SSH password login
       ansible.builtin.lineinfile:
@@ -92,18 +94,78 @@
         groups: docker
         append: true
 
-    - name: Install Portainer (optional)
+    - name: Check existing Docker daemon.json
+      ansible.builtin.stat:
+        path: /etc/docker/daemon.json
+      register: docker_daemon_file
+
+    - name: Read existing Docker daemon.json
+      ansible.builtin.slurp:
+        src: /etc/docker/daemon.json
+      register: docker_daemon_raw
+      when: docker_daemon_file.stat.exists
+
+    - name: Enable Docker live-restore (keep containers up across daemon restarts)
+      ansible.builtin.copy:
+        dest: /etc/docker/daemon.json
+        mode: '0644'
+        content: "{{ existing_config | combine({'live-restore': true}) | to_nice_json }}\n"
+      vars:
+        existing_config: "{{ (docker_daemon_raw.content | b64decode | from_json) if docker_daemon_file.stat.exists else {} }}"
+      notify: Restart Docker
+
+    - name: Remove Portainer (replaced by Dozzle)
       community.docker.docker_container:
         name: portainer
-        image: portainer/portainer-ce:linux-arm64
+        state: absent
+
+    - name: Install Dozzle (container log dashboard)
+      community.docker.docker_container:
+        name: dozzle
+        image: amir20/dozzle:v11.3.0
         state: started
         restart_policy: always
         published_ports:
-          - "9000:9000"
-          - "8000:8000"
+          - "80:8080"
         volumes:
-          - /var/run/docker.sock:/var/run/docker.sock
-          - portainer_data:/data
+          - /var/run/docker.sock:/var/run/docker.sock:ro
+        env:
+          DOZZLE_AUTH_PROVIDER: "none"
+          DOZZLE_DISABLE_SETUP_WIZARD: "true"
+          DOZZLE_ENABLE_ACTIONS: "false"
+          DOZZLE_ENABLE_SHELL: "false"
+          DOZZLE_ENABLE_MCP: "false"
+          DOZZLE_NO_ANALYTICS: "true"
+
+    - name: Add Tailscale apt keyring
+      ansible.builtin.apt_key:
+        url: "https://pkgs.tailscale.com/stable/debian/{{ ansible_distribution_release }}.noarmor.gpg"
+        state: present
+
+    - name: Add Tailscale apt repository
+      ansible.builtin.apt_repository:
+        repo: "deb https://pkgs.tailscale.com/stable/debian {{ ansible_distribution_release }} main"
+        state: present
+
+    - name: Install Tailscale
+      ansible.builtin.apt:
+        name: tailscale
+        state: present
+        update_cache: true
+
+    - name: Enable and start tailscaled
+      ansible.builtin.service:
+        name: tailscaled
+        state: started
+        enabled: true
+
+    - name: Connect to tailnet
+      ansible.builtin.shell: >
+        tailscale status >/dev/null 2>&1 ||
+        tailscale up --hostname rp4 --authkey {{ tailscale_auth_key }}
+      no_log: true
+      changed_when: false
+      when: tailscale_auth_key is defined
 
 
     - name: Install utility packages
@@ -111,7 +173,12 @@
         name:
           - btop
           - fzf
-          - ntop
           - ripgrep
-          - teal-deer
+          - tealdeer
         state: present
+
+  handlers:
+    - name: Restart Docker
+      ansible.builtin.service:
+        name: docker
+        state: restarted

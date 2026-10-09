@@ -1,8 +1,8 @@
-# Portainer on Raspberry Pi 4
+# Docker + Dozzle on Raspberry Pi 4
 
-This repo will setup and configure [Portainer](https://portainer.io) on a [Raspberry Pi4](https://www.raspberrypi.com/products/raspberry-pi-4-model-b/).
+This repo will set up and configure a [Raspberry Pi 4](https://www.raspberrypi.com/products/raspberry-pi-4-model-b/) as a Docker host, with [Docker Compose](https://docs.docker.com/compose/) for deployments and [Dozzle](https://dozzle.dev) as a live container log dashboard.
 - Basic security: password login disabled, [UFW](https://help.ubuntu.com/community/UFW) firewall and [Fail2Ban](https://github.com/fail2ban/fail2ban) login guard.
-- Minimal updates: security updates applied regularly.
+- Updates: security + stable updates applied automatically.
 - Instructions assume your using a Mac with [HomeBrew](https://brew.sh) installed.
 
 ## Image Creation
@@ -39,7 +39,14 @@ This repo will setup and configure [Portainer](https://portainer.io) on a [Raspb
 
  ## Running the Playbook.
  1. Run the command `ansible-playbook -i inventory.ini site.yml` and wait for it to complete.
- 2. Test Portainer by opening `RP4.local:9000` in web browser which should show Portainer.
- 3. Configure your admin account.
+    - To also join the Pi to your Tailscale tailnet, pass an auth key (kept out of the repo):
+      `ansible-playbook -i inventory.ini site.yml -e "tailscale_auth_key=$(cat .tailscale_rp4.key)"`.
+ 2. Test Dozzle by opening `RP4.local` (port 80) in a web browser to view container logs.
 
- You should now be good to go!
+ ## Tailscale (optional remote access)
+ 1. Install the client on your Mac: `brew install tailscale` and sign in to your tailnet.
+ 2. Create an auth key in the Tailscale admin console and save it to `.tailscale_rp4.key` (git-ignored).
+ 3. Run the playbook with the key (see above), or on the Pi run `sudo tailscale up`.
+ 4. Reach services over the tailnet using the Pi's Tailscale name/IP, e.g. `http://rp4`.
+
+  You should now be good to go!
