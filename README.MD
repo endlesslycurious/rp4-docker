@@ -38,11 +38,8 @@ This repo will set up and configure a [Raspberry Pi 4](https://www.raspberrypi.c
  5. Test ansible can connect with `ansible all -i inventory.ini -m ping`.
 
  ## Running the Playbook.
- 1. Run the command `ansible-playbook -i inventory.ini site.yml` and wait for it to complete.
-     - To also join the Pi to your Tailscale tailnet, pass an auth key (kept out of the repo):
-       `ansible-playbook -i inventory.ini site.yml -e "tailscale_auth_key=$(cat .tailscale_rp4.key)"`.
-     - To also route Docker Hub pulls through a Zot pull-through cache, pass its address (kept out of the repo):
-       `ansible-playbook -i inventory.ini site.yml -e "zot_mirror=$(cat .zot_mirror)"`.
+ 1. Run `just run` (or `just` for the recipe list) and wait for it to complete. The playbook itself reads the git-ignored secrets — `.tailscale_rp4.key` and `.zot_mirror` — from the repo root on the control node, so `just run` takes no arguments and nothing sensitive touches the command line or shell history. Only the files that exist are used; omit either to skip that optional step.
+     - Without `just`, the equivalent is `ansible-playbook -i inventory.ini site.yml`.
  2. Test Dozzle by opening `RP4.local` (port 80) in a web browser to view container logs.
 
  ## CLI tooling (mise + personal configs)

@@ -4,9 +4,10 @@
 default:
     @just --list
 
-# Run the playbook against the Pi (pass extra flags via ARGS, e.g. -e "zot_mirror=$(cat .zot_mirror)")
-run *ARGS:
-    pipenv run ansible-playbook -i inventory.ini site.yml {{ARGS}}
+# Run the playbook against the Pi. The playbook reads the git-ignored secrets
+# (.tailscale_rp4.key, .zot_mirror) itself, so no arguments are needed here.
+run:
+    pipenv run ansible-playbook -i inventory.ini site.yml
 
 # Check playbook syntax only
 syntax:

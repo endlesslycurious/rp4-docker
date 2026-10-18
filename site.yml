@@ -1,6 +1,29 @@
 - name: Raspberry Pi 4 - Headless Docker Host Setup
   hosts: rp4
   become: true
+  pre_tasks:
+    - name: Check for local secret files
+      ansible.builtin.stat:
+        path: "{{ playbook_dir }}/{{ item }}"
+      loop:
+        - .tailscale_rp4.key
+        - .zot_mirror
+      delegate_to: localhost
+      become: false
+      register: secret_files
+
+    - name: Load Tailscale auth key (if present)
+      ansible.builtin.set_fact:
+        tailscale_auth_key: "{{ lookup('file', playbook_dir + '/.tailscale_rp4.key') }}"
+      when: secret_files.results[0].stat.exists
+      no_log: true
+
+    - name: Load Zot mirror (if present)
+      ansible.builtin.set_fact:
+        zot_mirror: "{{ lookup('file', playbook_dir + '/.zot_mirror') }}"
+      when: secret_files.results[1].stat.exists
+      no_log: true
+
   tasks:
     - name: Update system
       ansible.builtin.apt:
@@ -170,17 +193,6 @@
       ansible.builtin.apt:
         name: rsync
         state: present
-
-    # TEMPORARY: one-off cleanup of duplicate apt tools now managed by mise.
-    # Remove this task after the first successful run.
-    - name: Remove apt versions of tools now managed by mise
-      ansible.builtin.apt:
-        name:
-          - btop
-          - fzf
-          - ripgrep
-          - tealdeer
-        state: absent
 
     - name: Clone personal configs repo (source of mise bootstrap)
       ansible.builtin.git:
