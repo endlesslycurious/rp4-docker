@@ -7,16 +7,17 @@
         update_cache: true
         upgrade: dist
 
-    - name: Install security packages
+    - name: Install security packages and bootstrap prerequisites
       ansible.builtin.apt:
         name:
           - ufw
           - fail2ban
           - unattended-upgrades
           - apt-transport-https
-          - ca-certificates
-          - curl
-          - gnupg
+          - ca-certificates  # also managed by mise; needed here for HTTPS apt repos
+          - curl             # also managed by mise; used to bootstrap mise
+          - git              # pre-mise prerequisite: clone the configs repo
+          - gnupg            # also managed by mise; needed here for apt_key
           - lsb-release
         state: present
 
@@ -59,13 +60,7 @@
         regexp: '^#?PasswordAuthentication'
         line: 'PasswordAuthentication no'
         state: present
-      register: no_passwords
-
-    - name: Restart SSH
-      when: no_passwords.changed
-      ansible.builtin.service:
-        name: ssh
-        state: restarted
+      notify: Restart SSH
 
     - name: Add Docker repository and key
       ansible.builtin.apt_key:
@@ -85,7 +80,7 @@
           - containerd.io
           - docker-buildx-plugin
           - docker-compose-plugin
-        state: latest
+        state: present
         update_cache: true
 
     - name: Add user to docker group
@@ -171,15 +166,38 @@
       when: tailscale_auth_key is defined
 
 
-    - name: Install utility packages
+    - name: Install rsync (not provided by mise)
+      ansible.builtin.apt:
+        name: rsync
+        state: present
+
+    # TEMPORARY: one-off cleanup of duplicate apt tools now managed by mise.
+    # Remove this task after the first successful run.
+    - name: Remove apt versions of tools now managed by mise
       ansible.builtin.apt:
         name:
           - btop
           - fzf
           - ripgrep
-          - rsync
           - tealdeer
-        state: present
+        state: absent
+
+    - name: Clone personal configs repo (source of mise bootstrap)
+      ansible.builtin.git:
+        repo: https://github.com/endlesslycurious/configs.git
+        dest: "/home/{{ ansible_user }}/configs"
+        version: master
+        recursive: true               # nvim kickstart fork + catppuccin
+      become: true
+      become_user: "{{ ansible_user }}"
+
+    - name: Run configs setup.sh (installs mise and bootstraps tools)
+      ansible.builtin.command:
+        cmd: bash setup.sh
+        chdir: "/home/{{ ansible_user }}/configs"
+      become: true
+      become_user: "{{ ansible_user }}"
+      changed_when: false
 
     - name: Locate kernel cmdline.txt (Bookworm uses /boot/firmware, older /boot)
       ansible.builtin.stat:
@@ -231,6 +249,11 @@
         fail_msg: "memory cgroup not active; the Pi likely needs a reboot after the cmdline change"
 
   handlers:
+    - name: Restart SSH
+      ansible.builtin.service:
+        name: ssh
+        state: restarted
+
     - name: Restart Docker
       ansible.builtin.service:
         name: docker

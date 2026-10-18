@@ -45,6 +45,13 @@ This repo will set up and configure a [Raspberry Pi 4](https://www.raspberrypi.c
        `ansible-playbook -i inventory.ini site.yml -e "zot_mirror=$(cat .zot_mirror)"`.
  2. Test Dozzle by opening `RP4.local` (port 80) in a web browser to view container logs.
 
+ ## CLI tooling (mise + personal configs)
+ The playbook provisions command-line tools from the personal [configs](https://github.com/endlesslycurious/configs) repo rather than installing them individually via apt:
+ - It clones the repo to `~/configs` (as the login user, with submodules) and runs its `setup.sh`, which installs [mise](https://mise.jdx.dev), symlinks config files into `~/.config`, and runs `mise bootstrap` to install the declared CLI tools (`btop`, `fzf`, `ripgrep`, `tealdeer`, `eza`, `bat`, `fd`, `just`, `yq`, and more).
+ - mise installs these to `~/.local/bin` and activates shims on the login shell's `PATH`, so they shadow any system copies.
+ - `git`, `ca-certificates`, `curl`, and `gnupg` remain apt-installed as bootstrap prerequisites (they are needed before mise exists and are also declared in mise's `[bootstrap.packages]`); `rsync` is apt-installed as it isn't provided by mise.
+ - To update the tools later, run `./update.sh` inside `~/configs` (`mise self-update && mise upgrade && mise bootstrap packages upgrade`). Re-running the playbook also pulls the latest repo and re-runs `setup.sh`.
+
  ## Memory stats in Dozzle (Raspberry Pi only)
  By default the Raspberry Pi kernel boots with its memory cgroup **disabled** (the device tree passes `cgroup_disable=memory` to save overhead on low-RAM boards). Without it, the Docker API reports no per-container memory, so Dozzle's memory graph stays empty (the same reason `docker stats` shows `0`).
  The playbook fixes this automatically: it appends `cgroup_enable=memory` to the single-line `cmdline.txt` and **reboots the Pi once** to apply it (the flag must come *after* the DTB args, which appending guarantees). After that first reboot the memory controller is live and Dozzle shows memory for every container.
