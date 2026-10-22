@@ -57,6 +57,12 @@ This repo will set up and configure a [Raspberry Pi 4](https://www.raspberrypi.c
  - The Dozzle FAQ's advice (`/boot/cmdline.txt` plus `cgroup_enable=cpuset cgroup_memory=1`) is dated; on current Bookworm/Trixie the file is `/boot/firmware/cmdline.txt` and `cgroup_enable=memory` alone is enough. Revert by removing the token from `cmdline.txt` and rebooting.
  - Verify after a run: `cat /sys/fs/cgroup/cgroup.controllers` lists `memory`, and `docker info` no longer prints `WARNING: No memory limit support`.
 
+ ## Dozzle losing the daemon after a Docker restart
+ dockerd unlinks and recreates `/var/run/docker.sock` every time it starts. Dozzle binds the **socket file**, so after a daemon restart (playbook run, unattended upgrade, `systemctl restart docker`) its container keeps the old, deleted inode and the dashboard goes blank with `Can't reach agent at local` / `Unreachable` — even though `docker ps` on the host works. `restart_policy: always` does not help, because the container itself never exited.
+ The playbook installs a systemd drop-in (`/etc/systemd/system/docker.service.d/dozzle.conf`) with `ExecStartPost=-/usr/bin/docker restart dozzle`, so Dozzle is restarted automatically right after each daemon start and re-resolves the mount. To recover a host that predates the drop-in, run `docker restart dozzle` (or re-run the playbook).
+ Notes:
+ - Symptom check: `docker logs dozzle` repeats `Cannot connect to the Docker daemon at unix:///var/run/docker.sock`, and the socket inode inside the container differs from the host's (`stat -c %i /proc/$(docker inspect -f '{{.State.Pid}}' dozzle)/root/var/run/docker.sock` vs `stat -c %i /var/run/docker.sock`).
+
  ## Tailscale (optional remote access)
  1. Install the client on your Mac: `brew install tailscale` and sign in to your tailnet.
  2. Create an auth key in the Tailscale admin console and save it to `.tailscale_rp4.key` (git-ignored).

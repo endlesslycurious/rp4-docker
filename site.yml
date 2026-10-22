@@ -112,6 +112,28 @@
         groups: docker
         append: true
 
+    # dockerd unlinks and recreates /var/run/docker.sock on every start. A
+    # container that bind-mounted the *socket file* (Dozzle) keeps the old,
+    # now-deleted inode and loses the daemon until it is restarted — and
+    # `restart_policy: always` never fires because the container itself stayed
+    # up. This drop-in restarts Dozzle right after each daemon start so it
+    # re-resolves the mount; the `-` makes it a no-op on first provision, when
+    # the container does not exist yet.
+    - name: Ensure Docker systemd drop-in directory exists
+      ansible.builtin.file:
+        path: /etc/systemd/system/docker.service.d
+        state: directory
+        mode: '0755'
+
+    - name: Restart Dozzle whenever the Docker daemon restarts (drop-in)
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/docker.service.d/dozzle.conf
+        mode: '0644'
+        content: |
+          [Service]
+          ExecStartPost=-/usr/bin/docker restart dozzle
+      notify: Reload systemd
+
     - name: Check existing Docker daemon.json
       ansible.builtin.stat:
         path: /etc/docker/daemon.json
@@ -265,6 +287,14 @@
       ansible.builtin.service:
         name: ssh
         state: restarted
+
+    # Must be defined before "Restart Docker": handlers run in definition order,
+    # and the drop-in has to be loaded before the restart for ExecStartPost to
+    # fire. (A `service restart` re-reads the unit anyway; this keeps it explicit
+    # for runs where nothing else restarts the daemon.)
+    - name: Reload systemd
+      ansible.builtin.systemd_service:
+        daemon_reload: true
 
     - name: Restart Docker
       ansible.builtin.service:
